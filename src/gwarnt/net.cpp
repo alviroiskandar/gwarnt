@@ -129,6 +129,8 @@ void net::exec(void)
 	curl_easy_setopt(ch_, CURLOPT_PROXY, proxy_.c_str());
 	curl_easy_setopt(ch_, CURLOPT_WRITEFUNCTION, &curl_write_callback);
 	curl_easy_setopt(ch_, CURLOPT_WRITEDATA, &resp_);
+	curl_easy_setopt(ch_, CURLOPT_TIMEOUT, 30L);
+	curl_easy_setopt(ch_, CURLOPT_CONNECTTIMEOUT, 10L);
 
 	resp_.clear();
 	res = curl_easy_perform(ch_);

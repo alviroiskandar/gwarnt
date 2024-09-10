@@ -16,6 +16,7 @@ CXX_SOURCES	:= \
 	src/gwarnt/helpers.cpp \
 	src/gwarnt/net.cpp \
 	src/gwarnt/p2p_ad.cpp \
+	src/gwarnt/tgbot.cpp \
 	src/gwarnt/p2p/binance.cpp \
 	src/gwarnt/p2p/okx.cpp
 
