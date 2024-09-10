@@ -50,7 +50,7 @@ std::vector<gwarnt::p2p_ad> binance::get_data(const std::string &fiat,
 		size_t i;
 
 		for (i = 1; i <= 5; i++) {
-			tmp = __get_data(fiat, crypto, trade_type, page);
+			tmp = __get_data(fiat, crypto, trade_type, i);
 			ads.insert(ads.end(), tmp.begin(), tmp.end());
 		}
 	} else {
@@ -72,9 +72,9 @@ std::vector<gwarnt::p2p_ad> binance::__get_data(const std::string &fiat,
 	type = trade_type;
 	strtoupper(type);
 	if (type == "BUY")
-		type = "BUY";
-	else if (type == "SELL")
 		type = "SELL";
+	else if (type == "SELL")
+		type = "BUY";
 	else
 		throw std::runtime_error("Invalid trade type: " + trade_type);
 
