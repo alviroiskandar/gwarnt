@@ -11,6 +11,7 @@ DEPFLAGS = -MT "$@" -MMD -MP -MF $(@:%.o=%.d)
 
 C_SOURCES	:=
 CXX_SOURCES	:= \
+	src/gwarnt/arbitrage.cpp \
 	src/gwarnt/entry.cpp \
 	src/gwarnt/helpers.cpp \
 	src/gwarnt/net.cpp \
