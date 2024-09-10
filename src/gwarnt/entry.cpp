@@ -37,7 +37,7 @@ private:
 	std::string chat_id_;
 	std::unordered_map<std::string, time_t> broadcast_map_;
 
-	bool opp_need_broadcast(const gwarnt::arb_opp &opp);
+	bool opp_should_skip(const gwarnt::arb_opp &opp);
 	void insert_broadcast_map(const gwarnt::arb_opp &opp);
 	std::string get_opp_hash(const gwarnt::arb_opp &opp);
 };
@@ -81,20 +81,20 @@ void gwarnt_bot::garbage_collect(void)
 }
 
 inline
-bool gwarnt_bot::opp_need_broadcast(const gwarnt::arb_opp &opp)
+bool gwarnt_bot::opp_should_skip(const gwarnt::arb_opp &opp)
 {
 	std::string hash = get_opp_hash(opp);
 	auto it = broadcast_map_.find(hash);
 
 	if (it == broadcast_map_.end())
-		return false;
+		return true;
 
 	if (time(NULL) - it->second > BROADCAST_INTERVAL) {
 		broadcast_map_.erase(it);
-		return false;
+		return true;
 	}
 
-	return true;
+	return false;
 }
 
 inline
@@ -119,19 +119,30 @@ static std::string merge_vec_str(const std::vector<std::string> &vec)
 inline
 void gwarnt_bot::broadcast_opp(const gwarnt::arb_opp &opp)
 {
-	double min_avail;
-	double est_profit;
+	if (!opp_should_skip(opp))
+		return;
 
-	if (opp_need_broadcast(opp))
+	const auto &b = opp.buy;
+	const auto &s = opp.sell;
+	double est_profit;
+	double min_avail;
+	double mpp;
+
+	if (b.tradable_amount_ < s.tradable_amount_)
+		min_avail = b.tradable_amount_;
+	else
+		min_avail = s.tradable_amount_;
+
+	est_profit = b.price_ - s.price_;
+	mpp = min_avail * est_profit;
+	if (mpp < 100000)
 		return;
 
 	std::string msg = "Arbitrage opportunity detected!\n\n";
-	const auto &b = opp.buy;
-	const auto &s = opp.sell;
 
 	msg += "Buy on " + s.exchange_ + "\n";
 	msg += "m: " + s.ad_id_ + " (" + s.merchant_name_ + ")\n";
-	msg += "price: " + to_string_wp(b.price_, 2) + "\n";
+	msg += "price: " + to_string_wp(s.price_, 2) + " " + s.fiat_ + "\n";
 	msg += "min_buy: " + to_string_wp(s.min_amount_, 2) + " " + s.fiat_ + "\n";
 	msg += "max_buy: " + to_string_wp(s.max_amount_, 2) + " " + s.fiat_ + "\n";
 	msg += "available: " + to_string_wp(s.tradable_amount_, 2) + " " + s.crypto_ + "\n";
@@ -141,7 +152,7 @@ void gwarnt_bot::broadcast_opp(const gwarnt::arb_opp &opp)
 
 	msg += "Sell on " + b.exchange_ + "\n";
 	msg += "m: " + b.ad_id_ + " (" + b.merchant_name_ + ")\n";
-	msg += "price: " + to_string_wp(s.price_, 2) + "\n";
+	msg += "price: " + to_string_wp(b.price_, 2) + " " + b.fiat_ + "\n";
 	msg += "min_sell: " + to_string_wp(b.min_amount_, 2) + " " + b.fiat_ + "\n";
 	msg += "max_sell: " + to_string_wp(b.max_amount_, 2) + " " + b.fiat_ + "\n";
 	msg += "available: " + to_string_wp(b.tradable_amount_, 2) + " " + b.crypto_ + "\n";
@@ -149,18 +160,13 @@ void gwarnt_bot::broadcast_opp(const gwarnt::arb_opp &opp)
 
 	msg += "------------------------------------------\n";
 
-	if (b.tradable_amount_ < s.tradable_amount_)
-		min_avail = b.tradable_amount_;
-	else
-		min_avail = s.tradable_amount_;
-
-	est_profit = s.price_ - b.price_;
 	msg += "est_profit_per_unit: " + to_string_wp(est_profit, 2) + " " + s.fiat_ + "\n";
-	msg += "maximum_extractable_value: " + to_string_wp(min_avail * est_profit, 2) + " " + s.fiat_ + "\n";
+	msg += "max_possible_profit: " + to_string_wp(mpp, 2) + " " + s.fiat_ + "\n";
 
+	printf("%s", msg.c_str());
 	tg_.send_message(chat_id_, msg);
 	insert_broadcast_map(opp);
-	sleep(3);
+	sleep(1);
 }
 
 static int broadcast_opp(gwarnt_bot *bot, const gwarnt::arb_opp &opp)

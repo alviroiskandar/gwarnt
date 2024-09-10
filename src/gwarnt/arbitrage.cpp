@@ -9,13 +9,13 @@ std::vector<struct arb_opp> find_arbitrage_opps(const std::vector<p2p_ad> &sell,
 {
 	std::vector<struct arb_opp> ret;
 
-	for (const auto &i : buy) {
-		for (const auto &j : sell) {
-			if (j.price_ < i.price_) {
+	for (const auto &s: sell) {
+		for (const auto &b: buy) {
+			if (s.price_ < b.price_) {
 				struct arb_opp opp;
 
-				opp.buy = i;
-				opp.sell = j;
+				opp.buy = b;
+				opp.sell = s;
 				ret.push_back(opp);
 			}
 		}
