@@ -13,7 +13,9 @@ opportunities across two different exchanges for a given currency pair.
 
 ## Run
 
-  ./gwarnt
+  export TG_BOT_TOKEN=your_telegram_bot_token;
+  export TG_CHAT_ID=your_telegram_chat_id;
+  ./gwarnt;
 
 -- 
 Alviro Iskandar Setiawan
