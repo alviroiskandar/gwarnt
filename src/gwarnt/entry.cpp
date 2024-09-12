@@ -28,7 +28,7 @@ public:
 	inline void set_chat_id(const std::string &chat_id) { chat_id_ = chat_id; }
 
 	void init_get_me(void);
-	void broadcast_opp(const gwarnt::arb_opp &opp);
+	void broadcast_opps(const std::vector<gwarnt::arb_opp> &opps);
 	void garbage_collect(void);
 
 private:
@@ -38,7 +38,9 @@ private:
 	std::unordered_map<std::string, time_t> broadcast_map_;
 
 	bool opp_should_skip(const gwarnt::arb_opp &opp);
+	bool opp_should_skip(const std::string &hash);
 	void insert_broadcast_map(const gwarnt::arb_opp &opp);
+	void insert_broadcast_map(const std::string &hash);
 	std::string get_opp_hash(const gwarnt::arb_opp &opp);
 };
 
@@ -81,28 +83,40 @@ void gwarnt_bot::garbage_collect(void)
 }
 
 inline
-bool gwarnt_bot::opp_should_skip(const gwarnt::arb_opp &opp)
+bool gwarnt_bot::opp_should_skip(const std::string &hash)
 {
-	std::string hash = get_opp_hash(opp);
 	auto it = broadcast_map_.find(hash);
 
 	if (it == broadcast_map_.end())
-		return true;
+		return false;
 
 	if (time(NULL) - it->second > BROADCAST_INTERVAL) {
 		broadcast_map_.erase(it);
-		return true;
+		return false;
 	}
 
-	return false;
+	return true;
+}
+
+inline
+bool gwarnt_bot::opp_should_skip(const gwarnt::arb_opp &opp)
+{
+	std::string hash = get_opp_hash(opp);
+	return opp_should_skip(hash);
+}
+
+inline
+void gwarnt_bot::insert_broadcast_map(const std::string &hash)
+{
+	broadcast_map_[hash] = time(NULL);
+	printf("Inserted hash %s\n", hash.c_str());
 }
 
 inline
 void gwarnt_bot::insert_broadcast_map(const gwarnt::arb_opp &opp)
 {
 	std::string hash = get_opp_hash(opp);
-	broadcast_map_[hash] = time(NULL);
-	printf("Inserted hash %s\n", hash.c_str());
+	insert_broadcast_map(hash);
 }
 
 static std::string merge_vec_str(const std::vector<std::string> &vec)
@@ -117,82 +131,80 @@ static std::string merge_vec_str(const std::vector<std::string> &vec)
 }
 
 inline
-void gwarnt_bot::broadcast_opp(const gwarnt::arb_opp &opp)
+void gwarnt_bot::broadcast_opps(const std::vector<gwarnt::arb_opp> &opps)
 {
-	if (!opp_should_skip(opp))
-		return;
+	std::string msg = "#p2p_arbitrage\nArbitrage opportunity detected!\n\n";
+	std::vector<std::string> hashes;
+	bool send_after_loop = false;
+	std::string f = "";
 
-	const auto &b = opp.buy;
-	const auto &s = opp.sell;
-	double est_profit;
-	double min_avail;
-	double mpp;
+	for (const auto &opp : opps) {
+		std::string hash = get_opp_hash(opp);
+		if (opp_should_skip(hash))
+			continue;
 
-	if (b.tradable_amount_ < s.tradable_amount_)
-		min_avail = b.tradable_amount_;
-	else
-		min_avail = s.tradable_amount_;
+		hashes.push_back(hash);
+		const auto &s = opp.sell;
+		const auto &b = opp.buy;
+		size_t len;
 
-	est_profit = b.price_ - s.price_;
-	mpp = min_avail * est_profit;
-	if (mpp < 100000)
-		return;
+		f += "Buy on " + s.exchange_ + "\n";
+		f += "m: " + s.ad_id_ + " (" + s.merchant_name_ + ")\n";
+		f += "price: " + to_string_wp(s.price_, 2) + " " + s.fiat_ + "\n";
+		f += "min_buy: " + to_string_wp(s.min_amount_, 2) + " " + s.fiat_ + "\n";
+		f += "max_buy: " + to_string_wp(s.max_amount_, 2) + " " + s.fiat_ + "\n";
+		f += "available: " + to_string_wp(s.tradable_amount_, 2) + " " + s.crypto_ + "\n";
+		f += "mt: " + merge_vec_str(s.methods_) + "\n";
+		f += "\n";
+		f += "Sell on " + b.exchange_ + "\n";
+		f += "m: " + b.ad_id_ + " (" + b.merchant_name_ + ")\n";
+		f += "price: " + to_string_wp(b.price_, 2) + " " + b.fiat_ + "\n";
+		f += "min_sell: " + to_string_wp(b.min_amount_, 2) + " " + b.fiat_ + "\n";
+		f += "max_sell: " + to_string_wp(b.max_amount_, 2) + " " + b.fiat_ + "\n";
+		f += "available: " + to_string_wp(b.tradable_amount_, 2) + " " + b.crypto_ + "\n";
+		f += "mt: " + merge_vec_str(b.methods_) + "\n";
+		f += "------------------------------------------\n";
+		f += "est_profit_per_unit: " + to_string_wp(opp.est_profit, 2) + " " + s.fiat_ + "\n";
+		f += "max_possible_profit: " + to_string_wp(opp.max_possible_profit, 2) + " " + s.fiat_ + "\n";
+		f += "============================================\n\n";
 
-	std::string msg = "Arbitrage opportunity detected!\n\n";
+		len = msg.length() + f.length();
+		if (len >= 4096) {
+			tg_.send_message(chat_id_, msg);
 
-	msg += "Buy on " + s.exchange_ + "\n";
-	msg += "m: " + s.ad_id_ + " (" + s.merchant_name_ + ")\n";
-	msg += "price: " + to_string_wp(s.price_, 2) + " " + s.fiat_ + "\n";
-	msg += "min_buy: " + to_string_wp(s.min_amount_, 2) + " " + s.fiat_ + "\n";
-	msg += "max_buy: " + to_string_wp(s.max_amount_, 2) + " " + s.fiat_ + "\n";
-	msg += "available: " + to_string_wp(s.tradable_amount_, 2) + " " + s.crypto_ + "\n";
-	msg += "methods: " + merge_vec_str(s.methods_) + "\n";
+			for (const auto &hash : hashes)
+				insert_broadcast_map(hash);
 
-	msg += "\n";
+			hashes.clear();
+			msg = "#p2p_arbitrage\nArbitrage opportunity detected!\n\n" + f;
+			f = "";
+			sleep(2);
 
-	msg += "Sell on " + b.exchange_ + "\n";
-	msg += "m: " + b.ad_id_ + " (" + b.merchant_name_ + ")\n";
-	msg += "price: " + to_string_wp(b.price_, 2) + " " + b.fiat_ + "\n";
-	msg += "min_sell: " + to_string_wp(b.min_amount_, 2) + " " + b.fiat_ + "\n";
-	msg += "max_sell: " + to_string_wp(b.max_amount_, 2) + " " + b.fiat_ + "\n";
-	msg += "available: " + to_string_wp(b.tradable_amount_, 2) + " " + b.crypto_ + "\n";
-	msg += "methods: " + merge_vec_str(b.methods_) + "\n";
+			send_after_loop = false;
+		} else {
+			send_after_loop = true;
+		}
 
-	msg += "------------------------------------------\n";
+		msg += f;
+	}
 
-	msg += "est_profit_per_unit: " + to_string_wp(est_profit, 2) + " " + s.fiat_ + "\n";
-	msg += "max_possible_profit: " + to_string_wp(mpp, 2) + " " + s.fiat_ + "\n";
+	if (send_after_loop) {
+		msg += f;
+		tg_.send_message(chat_id_, msg);
+		for (const auto &hash : hashes)
+			insert_broadcast_map(hash);
 
-	printf("%s", msg.c_str());
-	tg_.send_message(chat_id_, msg);
-	insert_broadcast_map(opp);
-	sleep(1);
-}
-
-static int broadcast_opp(gwarnt_bot *bot, const gwarnt::arb_opp &opp)
-{
-	bot->broadcast_opp(opp);
-	return 0;
-}
-
-static int broadcast_opps(gwarnt_bot *bot,
-			  const std::vector<gwarnt::arb_opp> &opps)
-{
-	std::string msg;
-	gwarnt::tgbot::json j;
-
-	if (opps.size() == 0)
-		return 0;
-
-	for (const auto &opp : opps)
-		broadcast_opp(bot, opp);
-
-	return 0;
+		sleep(1);
+	}
 }
 
 static void run(gwarnt_bot *bot, gwarnt::p2p::binance *bnc,
 		gwarnt::p2p::okx *okx)
 {
+	static const double min_profit = 100000;
+	static const double min_price = 14000;
+	static const double max_price = 17000;
+
 	std::vector<gwarnt::p2p_ad> buy_bnc, sell_bnc;
 	std::vector<gwarnt::p2p_ad> buy_okx, sell_okx;
 	std::vector<gwarnt::arb_opp> opps;
@@ -207,13 +219,13 @@ static void run(gwarnt_bot *bot, gwarnt::p2p::binance *bnc,
 	printf("Binance : %lu buy, %lu sell\n", buy_bnc.size(), sell_bnc.size());
 	printf("OKX     : %lu buy, %lu sell\n", buy_okx.size(), sell_okx.size());
 
-	opps = gwarnt::find_arbitrage_opps(sell_okx, buy_bnc);
+	opps = gwarnt::find_arbitrage_opps(sell_okx, buy_bnc, min_profit, min_price, max_price);
 	printf("Opp1    : %zu\n", opps.size());
-	broadcast_opps(bot, opps);
+	bot->broadcast_opps(opps);
 
-	opps = gwarnt::find_arbitrage_opps(sell_bnc, buy_okx);
+	opps = gwarnt::find_arbitrage_opps(sell_bnc, buy_okx, min_profit, min_price, max_price);
 	printf("Opp2    : %zu\n", opps.size());
-	broadcast_opps(bot, opps);
+	bot->broadcast_opps(opps);
 }
 
 int main(void)
