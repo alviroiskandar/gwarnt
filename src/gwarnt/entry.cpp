@@ -189,7 +189,6 @@ void gwarnt_bot::broadcast_opps(const std::vector<gwarnt::arb_opp> &opps)
 	}
 
 	if (send_after_loop) {
-		msg += f;
 		tg_.send_message(chat_id_, msg);
 		for (const auto &hash : hashes)
 			insert_broadcast_map(hash);
