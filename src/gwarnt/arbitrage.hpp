@@ -17,9 +17,10 @@ struct arb_opp {
 
 std::vector<struct arb_opp> find_arbitrage_opps(const std::vector<p2p_ad> &sell,
 						const std::vector<p2p_ad> &buy,
-						double min_mpp = 0.0,
-						double min_price = 0.0,
-						double max_price = 0.0);
+						bool skip_dup_maker,
+						double min_mpp,
+						double min_price,
+						double max_price);
 
 } /* namespace gwarnt */
 

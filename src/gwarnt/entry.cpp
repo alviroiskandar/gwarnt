@@ -31,17 +31,17 @@ public:
 	void broadcast_opps(const std::vector<gwarnt::arb_opp> &opps);
 	void garbage_collect(void);
 
-private:
-	static constexpr time_t BROADCAST_INTERVAL = 300;
-	gwarnt::tgbot tg_;
-	std::string chat_id_;
-	std::unordered_map<std::string, time_t> broadcast_map_;
-
 	bool opp_should_skip(const gwarnt::arb_opp &opp);
 	bool opp_should_skip(const std::string &hash);
 	void insert_broadcast_map(const gwarnt::arb_opp &opp);
 	void insert_broadcast_map(const std::string &hash);
 	std::string get_opp_hash(const gwarnt::arb_opp &opp);
+
+private:
+	static constexpr time_t BROADCAST_INTERVAL = 300;
+	gwarnt::tgbot tg_;
+	std::string chat_id_;
+	std::unordered_map<std::string, time_t> broadcast_map_;
 };
 
 inline
@@ -148,24 +148,24 @@ void gwarnt_bot::broadcast_opps(const std::vector<gwarnt::arb_opp> &opps)
 		const auto &b = opp.buy;
 		size_t len;
 
-		f += "Buy on " + s.exchange_ + "\n";
-		f += "m: " + s.ad_id_ + " (" + s.merchant_name_ + ")\n";
-		f += "price: " + to_string_wp(s.price_, 2) + " " + s.fiat_ + "\n";
-		f += "min_buy: " + to_string_wp(s.min_amount_, 2) + " " + s.fiat_ + "\n";
-		f += "max_buy: " + to_string_wp(s.max_amount_, 2) + " " + s.fiat_ + "\n";
-		f += "available: " + to_string_wp(s.tradable_amount_, 2) + " " + s.crypto_ + "\n";
-		f += "mt: " + merge_vec_str(s.methods_) + "\n";
+		f += "[Buy on " + s.exchange_ + "]\n";
+		f += "m: " + s.ad_id_ + " (" + s.merchant_name_ + ");\n";
+		f += "price: " + to_string_wp(s.price_, 2) + " " + s.fiat_ + "; ";
+		f += "available: " + to_string_wp(s.tradable_amount_, 2) + " " + s.crypto_ + ";\n";
+		f += "min_buy: " + to_string_wp(s.min_amount_, 2) + " " + s.fiat_ + "; ";
+		f += "max_buy: " + to_string_wp(s.max_amount_, 2) + " " + s.fiat_ + ";\n";
+		f += "mt: " + merge_vec_str(s.methods_) + ";\n";
 		f += "\n";
-		f += "Sell on " + b.exchange_ + "\n";
-		f += "m: " + b.ad_id_ + " (" + b.merchant_name_ + ")\n";
-		f += "price: " + to_string_wp(b.price_, 2) + " " + b.fiat_ + "\n";
-		f += "min_sell: " + to_string_wp(b.min_amount_, 2) + " " + b.fiat_ + "\n";
-		f += "max_sell: " + to_string_wp(b.max_amount_, 2) + " " + b.fiat_ + "\n";
-		f += "available: " + to_string_wp(b.tradable_amount_, 2) + " " + b.crypto_ + "\n";
-		f += "mt: " + merge_vec_str(b.methods_) + "\n";
+		f += "[Sell on " + b.exchange_ + "]\n";
+		f += "m: " + b.ad_id_ + " (" + b.merchant_name_ + ");\n";
+		f += "price: " + to_string_wp(b.price_, 2) + " " + b.fiat_ + "; ";
+		f += "available: " + to_string_wp(b.tradable_amount_, 2) + " " + b.crypto_ + ";\n";
+		f += "min_sell: " + to_string_wp(b.min_amount_, 2) + " " + b.fiat_ + "; ";
+		f += "max_sell: " + to_string_wp(b.max_amount_, 2) + " " + b.fiat_ + ";\n";
+		f += "mt: " + merge_vec_str(b.methods_) + ";\n";
 		f += "------------------------------------------\n";
-		f += "est_profit_per_unit: " + to_string_wp(opp.est_profit, 2) + " " + s.fiat_ + "\n";
-		f += "max_possible_profit: " + to_string_wp(opp.max_possible_profit, 2) + " " + s.fiat_ + "\n";
+		f += "est_profit_per_unit: " + to_string_wp(opp.est_profit, 2) + " " + s.fiat_ + ";\n";
+		f += "max_possible_profit: " + to_string_wp(opp.max_possible_profit, 2) + " " + s.fiat_ + ";\n";
 		f += "============================================\n\n";
 
 		len = msg.length() + f.length();
@@ -201,13 +201,17 @@ void gwarnt_bot::broadcast_opps(const std::vector<gwarnt::arb_opp> &opps)
 static void run(gwarnt_bot *bot, gwarnt::p2p::binance *bnc,
 		gwarnt::p2p::okx *okx)
 {
+	static bool skip_dup_maker = true;
 	static const double min_profit = 100000;
 	static const double min_price = 14000;
 	static const double max_price = 17000;
 
+	std::unordered_map<std::string, uint32_t> sokx_map, sbnc_map;
 	std::vector<gwarnt::p2p_ad> buy_bnc, sell_bnc;
 	std::vector<gwarnt::p2p_ad> buy_okx, sell_okx;
-	std::vector<gwarnt::arb_opp> opps;
+	std::vector<gwarnt::arb_opp> sokx, sbnc;
+	size_t zsokx, zsbnc;
+	std::string hash;
 
 	printf("Fetching data...\n");
 
@@ -219,13 +223,28 @@ static void run(gwarnt_bot *bot, gwarnt::p2p::binance *bnc,
 	printf("Binance : %lu buy, %lu sell\n", buy_bnc.size(), sell_bnc.size());
 	printf("OKX     : %lu buy, %lu sell\n", buy_okx.size(), sell_okx.size());
 
-	opps = gwarnt::find_arbitrage_opps(sell_okx, buy_bnc, min_profit, min_price, max_price);
-	printf("Opp1    : %zu\n", opps.size());
-	bot->broadcast_opps(opps);
+	sokx = gwarnt::find_arbitrage_opps(sell_okx, buy_bnc, skip_dup_maker, min_profit, min_price, max_price);
+	sbnc = gwarnt::find_arbitrage_opps(sell_bnc, buy_okx, skip_dup_maker, min_profit, min_price, max_price);
+	zsokx = sokx.size();
+	zsbnc = sbnc.size();
 
-	opps = gwarnt::find_arbitrage_opps(sell_bnc, buy_okx, min_profit, min_price, max_price);
-	printf("Opp2    : %zu\n", opps.size());
-	bot->broadcast_opps(opps);
+	if (zsokx == 0 && zsbnc == 0) {
+		printf("No arbitrage opportunity found.\n");
+		return;
+	}
+
+	printf("Arbitrage opportunities found:\n");
+	if (zsokx)
+		printf("  - Buy on OKX, sell on Binance: %zu\n", zsokx);
+	if (zsbnc)
+		printf("  - Buy on Binance, sell on OKX: %zu\n", zsbnc);
+	printf("------------------------------------------\n");
+
+	if (zsokx)
+		bot->broadcast_opps(sokx);
+
+	if (zsbnc)
+		bot->broadcast_opps(sbnc);
 }
 
 int main(void)
